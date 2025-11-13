@@ -1,0 +1,148 @@
+\documentclass[12pt,a4paper]{article}
+
+% 中文支持 - 使用Noto字体（适用于Linux系统）
+\usepackage{xeCJK}
+\setCJKmainfont{Noto Serif CJK SC}      % 宋体（正文）- 使用Noto Serif替代
+\setCJKsansfont{Noto Sans CJK SC}      % 黑体（标题）- 使用Noto Sans替代
+\setCJKmonofont{Courier New}            % 等宽字体（代码）
+
+% 定义黑体字体族
+\setCJKfamilyfont{zhhei}{Noto Sans CJK SC}  % 黑体字体族定义
+
+% 页面设置（A4，2.5cm边距）
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+
+% 标题格式
+\usepackage{titlesec}
+% 一级标题：黑体18pt，段前12pt，段后6pt
+\titleformat{\section}
+  {\fontsize{18pt}{18pt}\bfseries\CJKfamily{zhhei}}
+  {}
+  {0em}
+  {}
+\titlespacing{\section}{0pt}{12pt}{6pt}
+
+% 二级标题：黑体16pt，段前6pt，段后3pt
+\titleformat{\subsection}
+  {\fontsize{16pt}{16pt}\bfseries\CJKfamily{zhhei}}
+  {}
+  {0em}
+  {}
+\titlespacing{\subsection}{0pt}{6pt}{3pt}
+
+% 三级标题：黑体14pt，段前3pt，段后3pt
+\titleformat{\subsubsection}
+  {\fontsize{14pt}{14pt}\bfseries\CJKfamily{zhhei}}
+  {}
+  {0em}
+  {}
+\titlespacing{\subsubsection}{0pt}{3pt}{3pt}
+
+% 四级标题：黑体12pt，段前3pt，段后0pt
+\titleformat{\paragraph}
+  {\fontsize{12pt}{12pt}\bfseries\CJKfamily{zhhei}}
+  {}
+  {0em}
+  {}
+\titlespacing{\paragraph}{0pt}{3pt}{0pt}
+
+% 段落格式
+\usepackage{setspace}
+\onehalfspacing  % 1.5倍行距
+\setlength{\parindent}{2em}  % 首行缩进2字符
+\setlength{\parskip}{6pt}    % 段后间距6pt
+
+% 代码块格式
+\usepackage{listings}  % 代码块支持
+
+% 代码块格式设置
+\lstset{
+    basicstyle=\ttfamily\fontsize{10.5pt}{12.6pt}\selectfont,  % 代码字体：Courier New，五号（10.5pt）
+    breaklines=true,              % 自动换行
+    breakatwhitespace=true,      % 在空格处换行
+    frame=single,                % 边框
+    framesep=3pt,                % 边框间距
+    framerule=0.5pt,             % 边框宽度
+    rulecolor=\color{black},    % 边框颜色
+    backgroundcolor=\color{gray!5},  % 背景色（浅灰色）
+    showstringspaces=false,      % 不显示字符串中的空格
+    showspaces=false,            % 不显示空格
+    showtabs=false,              % 不显示制表符
+    tabsize=4,                   % 制表符大小
+    captionpos=b,                % 标题位置（底部）
+    numbers=left,                % 行号位置
+    numberstyle=\tiny\color{gray},  % 行号样式
+    stepnumber=1,                % 行号步长
+    numbersep=5pt                % 行号与代码间距
+}
+
+% 代码块标题格式
+\renewcommand{\lstlistingname}{代码}
+
+
+% 表格格式
+\usepackage{tabularx}
+\usepackage{longtable}  % 长表格支持
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{colortbl}  % 表格背景色支持
+\usepackage{xcolor}    % 颜色支持
+
+% 表格格式设置
+\definecolor{tableheaderbg}{RGB}{240,240,240}  % 表头背景色RGB(240,240,240)
+\renewcommand{\arraystretch}{1.2}              % 表格行高
+\setlength{\arrayrulewidth}{0.5pt}            % 表格内边框宽度
+
+% 表格字体设置（表格文字：宋体，五号10.5pt）
+\newcolumntype{C}[1]{>{\centering\arraybackslash\fontsize{10.5pt}{12.6pt}\selectfont}p{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash\fontsize{10.5pt}{12.6pt}\selectfont}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash\fontsize{10.5pt}{12.6pt}\selectfont}p{#1}}
+
+% 表格默认宽度设置（占页面宽度的90%-100%）
+\setlength{\tabcolsep}{6pt}  % 表格列间距
+
+
+% 页眉页脚
+\usepackage{fancyhdr}
+\setlength{\headheight}{14pt}  % 修复页眉高度警告
+\pagestyle{fancy}
+\fancyhead[L]{\small\bfseries 文档名称}
+\fancyhead[R]{\small\bfseries 版本号：v1.0}
+\fancyfoot[L]{\small 编制单位}
+\fancyfoot[C]{\small 第\thepage\ 页 共\pageref{LastPage}\ 页}
+\fancyfoot[R]{\small \today}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% 图表编号格式
+\usepackage{caption}  % 图表标题格式
+\captionsetup{
+    labelsep=space,           % 标签和标题之间用空格分隔
+    font=small,               % 字体大小
+    format=hang,              % 标题格式
+    justification=centering,   % 居中
+    singlelinecheck=false     % 允许多行标题
+}
+
+% 图表编号格式：图1-1、表2-3
+\renewcommand{\figurename}{图}
+\renewcommand{\tablename}{表}
+\renewcommand{\thefigure}{\arabic{section}-\arabic{figure}}
+\renewcommand{\thetable}{\arabic{section}-\arabic{table}}
+
+% 表格标题字体：黑体，五号（10.5pt），加粗
+\captionsetup[table]{font={bf,small},labelfont=bf}
+\captionsetup[figure]{font={bf,small},labelfont=bf}
+
+% 其他设置
+\usepackage{hyperref}
+\usepackage{lastpage}
+% 公式编号格式：(1-1)、(2-3)
+\numberwithin{equation}{section}  % 公式按章节编号
+\renewcommand{\theequation}{\arabic{section}-\arabic{equation}}
+
+
+\begin{document}
+$body$
+\end{document}
+

@@ -1,0 +1,177 @@
+# JMeter Test Suite v2.0 Configuration File
+# Colleagues only need to modify the 3 parameters below
+
+# Main Configuration (3 parameters to modify)
+
+# 1. Thread range (format: "min max step")
+# Example: "10 50 20" means test with 10, 30, 50 threads (3 groups)
+# 2小时测试规划（Debug优先 + 其他测试）：
+#   执行顺序：200→300→400→500→600（逐步增压，最后验证600×20 bug）
+#   预计时间：每轮3-5分钟 × 5轮 = 15-25分钟，剩余时间做其他测试
+thread_range: "700 1000 100"
+
+# 2. Loop range (format: "min max step")  
+# Example: "3 10 2" means test with 3, 5, 7, 9 loops (4 groups)
+# 2小时测试规划：固定20循环（验证bug的关键参数）
+#   600×20循环是bug场景，必须验证
+#   200-500×20循环用于其他测试和对比
+loop_range: "100 100 0"
+
+# 3. Test plan selection (choose one JMX file to run)
+# Available test plans in src/jmeter_test_suite/infrastructure/config/test_plans/:
+#   "01_register.jmx"        # User registration API
+#   "02_device_strategy.jmx" # Device strategy API (default)
+#   "03_device_name.jmx"     # Device name API
+#   "04_device_mode.jmx"     # Device mode API
+#   "05_device_vendor.jmx"   # Device vendor API
+#   "06_device_protect.jmx"  # Device protection API
+#   "07_device_logo.jmx"     # Device logo API
+#   "08_device_mqtt.jmx"     # Device MQTT API
+#   "09_device_heartbeat.jmx"# Device heartbeat API
+test_plans:
+  - "09_device_heartbeat.jmx"
+
+# System Configuration (usually no need to change)
+# JMeter命令配置说明：
+# 1. 推荐方式：将JMeter添加到系统PATH，然后设置为 "jmeter"
+#    Windows: 添加 JMeter的bin目录到PATH，使用 "jmeter.bat" 或 "jmeter"
+#    Linux/macOS: 添加 JMeter的bin目录到PATH，使用 "jmeter"
+# 2. 环境变量方式（优先）：
+#    设置环境变量 JMETER_HOME（JMeter安装目录）或 JMETER_PATH（完整路径）
+#    例如：export JMETER_HOME=/opt/apache-jmeter-5.6.3
+# 3. 完整路径方式（不推荐，仅当JMeter不在PATH中时使用）：
+#    Windows: "D:\\tools\\apache-jmeter-5.6.3\\bin\\jmeter.bat"
+#    Linux: "/opt/apache-jmeter-5.6.3/bin/jmeter"
+#    macOS: "/usr/local/apache-jmeter-5.6.3/bin/jmeter"
+jmeter_command: "jmeter"  # 默认使用PATH中的jmeter命令（推荐）
+result_dir: "./result"
+test_plans_dir: "./src/jmeter_test_suite/infrastructure/config/test_plans"
+
+# 辅助端日志采集配置
+log_capture:
+  enabled: true
+  latest_file: "jmeter_latest.log"             # 自动落地到result目录
+  archive_suffix: "_jmeter.log"                # 归档副本后缀
+  stdout_suffix: "_stdout.log"                 # stdout保存后缀
+  stderr_suffix: "_stderr.log"                 # stderr保存后缀
+  keep_days: 7                                   # 可选的保留天数（后续用于清理）
+
+# nmon server configuration
+nmon:
+  server: "192.168.24.45"
+  user: "test"
+  password: "1"
+
+# Database configuration
+database:
+  host: "192.168.24.45"
+  port: 3307
+  user: "root"
+  password: "At6mj*1ygb2"
+  charset: "utf8mb4"
+
+# File copier configuration
+file_copier:
+  server: "192.168.24.45"
+  user: "test"
+  password: "1"
+  port: 22
+  timeout: 30
+  max_retries: 3
+  max_threads: 3
+  resume_enabled: true
+  default_local_dir: "./copied_files"
+
+# Excel report configuration
+excel:
+  output_dir: "./result"
+  include_charts: true
+  chart_types:
+    - "line"
+    - "bar"
+
+# Excel report advanced configuration
+excel_report:
+  template_file: "docs/diagrams/sample-test-data.xlsx"
+  output_dir: "result"
+  continuous_test:
+    threads_cell: "A5"
+    loops_cell: "B5"
+    requests_cell: "C5"
+    errors_cell: "D5"
+    tps_cell: "E5"
+    max_response_time_cell: "F5"
+    avg_response_time_cell: "G5"
+  parallel_publish:
+    concurrent_cell: "A3"
+    cpu_cell: "B3"
+    memory_cell: "C3"
+    disk_cell: "D3"
+    disk_io_cell: "E3"
+    network_cell: "F3"
+    network_io_cell: "G3"
+    avg_resp_cell: "H3"
+    trans_resp_cell: "I3"
+    click_rate_cell: "J3"
+    throughput_cell: "K3"
+
+# 服务端日志采集配置
+server_logs:
+  enabled: true
+  host: "192.168.24.45"
+  port: 22
+  username: "test"
+  password: "1"
+  base_path: "/opt/app/yangguan/logs"
+  files:
+    - "sys-info.log"
+    - "sys-error.log"
+    - "sys-user.log"
+    - "gc-manager.log.1.current"
+  local_prefix: "server"
+  include_timestamp: true
+
+# 分布式压测配置 (新增功能)
+distributed:
+  enabled: false                   # 是否启用分布式压测
+  mode: "ssh_remote"               # 分布式模式: jmeter_native, ssh_remote
+  slaves:
+    - name: "slave1"
+      host: "192.168.24.200"       # 笔记本2的IP地址
+      port: 22                     # SSH端口
+      username: "nighm"            # SSH用户名
+      password: "bios99"           # SSH密码
+      # JMeter路径（分布式模式）
+      # 配置说明：可以是完整路径或命令名（如果在PATH中）
+      # Windows示例: "D:\\apache-jmeter-5.6.3\\bin\\jmeter.bat" 或 "jmeter.bat"
+      # Linux示例: "/opt/apache-jmeter-5.6.3/bin/jmeter" 或 "jmeter"
+      jmeter_path: "jmeter"  # 默认使用PATH中的jmeter命令（推荐）
+      thread_ratio: 1.0            # 线程分配比例 (1.0 = 100%，只有一个slave)
+  controller:
+    host: "192.168.24.45"         # Controller IP
+    port: 1099                     # RMI端口
+  auto_distribute: true            # 自动分配线程
+  sync_start: true                 # 同步启动
+  sync_stop: true                  # 同步停止
+
+# Git 配置
+git:
+  # 基本配置
+  user_name: "nighm"
+  user_email: "nighm@sina.com"
+  default_branch: "main"
+  
+  # 远程仓库配置（仅作为参考，实际使用Git远程配置）
+  # 脚本会直接使用 'git remote' 中的配置，依赖Git凭据管理器进行认证
+  # 无需在此配置Token，这样脚本可以在任何设备上使用
+  remotes:
+    gitee:
+      url: "https://gitee.com/nighm/jiekou-20251103.git"
+    github:
+      url: "https://github.com/nighm/jiekou-20251103.git"
+  
+  # 推送配置
+  push_remotes: ["origin", "github"]  # 同时推送到 Gitee 和 GitHub
+  auto_commit: true
+  auto_push: true
+  debug: true  # 启用调试模式，显示详细日志

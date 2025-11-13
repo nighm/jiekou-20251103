@@ -1,0 +1,420 @@
+"""一键单接口执行入口脚本。"""
+
+from __future__ import annotations
+
+import datetime
+import io
+import logging
+import os
+import shutil
+import subprocess
+import sys
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Final
+
+import yaml
+
+
+LOGGER = logging.getLogger("one_click_single")
+PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
+JMX_CONFIG_PATH: Final[Path] = (
+    PROJECT_ROOT / "src" / "jmeter_test_suite" / "infrastructure" / "config" / "jmeter_config.yaml"
+)
+_JMX_CONFIG_CACHE: dict[str, object] | None = None
+ENCODING_CANDIDATES: Final[list[str]] = [
+    "utf-8",
+    sys.getdefaultencoding(),
+    os.environ.get("PYTHONIOENCODING", ""),
+    "gbk",
+    "cp936",
+]
+
+
+def ensure_utf8_streams() -> None:
+    """在 Windows 上确保标准输出使用 UTF-8。"""
+
+    if sys.platform.startswith("win"):
+        for name in ("stdout", "stderr"):
+            stream = getattr(sys, name, None)
+            buffer = getattr(stream, "buffer", None)
+            if buffer is None:
+                continue
+            try:
+                wrapped = io.TextIOWrapper(buffer, encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            setattr(sys, name, wrapped)
+
+
+def setup_logging() -> Path:
+    """初始化日志目录与日志文件。"""
+
+    logs_dir = PROJECT_ROOT / "logs"
+    logs_dir.mkdir(exist_ok=True)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = logs_dir / f"one_click_single_{timestamp}.log"
+
+    if LOGGER.handlers:
+        for handler in LOGGER.handlers[:]:
+            LOGGER.removeHandler(handler)
+            handler.close()
+
+    LOGGER.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(message)s")
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    LOGGER.addHandler(stream_handler)
+
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    LOGGER.addHandler(file_handler)
+
+    LOGGER.info("日志文件: %s", log_file)
+    return log_file
+
+
+def update_pythonpath() -> None:
+    """确保 PYTHONPATH 包含 src 目录。"""
+
+    src_path = str(PROJECT_ROOT / "src")
+    current = os.environ.get("PYTHONPATH", "")
+    if current:
+        if src_path not in current.split(os.pathsep):
+            os.environ["PYTHONPATH"] = os.pathsep.join([src_path, current])
+    else:
+        os.environ["PYTHONPATH"] = src_path
+
+
+def _decode_output(raw_line: bytes) -> str:
+    """尝试按多种编码解码输出。"""
+
+    candidates: Iterable[str] = [enc for enc in ENCODING_CANDIDATES if enc]
+    for encoding in candidates:
+        try:
+            return raw_line.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw_line.decode("utf-8", errors="replace")
+
+
+def run_command(command: list[str] | str, *, shell: bool = False) -> int:
+    """运行命令并实时输出日志。"""
+
+    if isinstance(command, list):
+        display = " ".join(command)
+    else:
+        display = command
+
+    LOGGER.info("执行命令: %s", display)
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=False,
+        shell=shell,
+    )
+
+    assert process.stdout is not None
+    for raw_line in iter(process.stdout.readline, b""):
+        if not raw_line:
+            break
+        line = _decode_output(raw_line).rstrip()
+        LOGGER.info(line)
+
+    process.wait()
+    LOGGER.info("命令退出码: %s", process.returncode)
+    return process.returncode
+
+
+def start_live_tail(log_path: Path) -> None:
+    """启动独立窗口实时跟踪 JMeter 日志。"""
+    if os.name == 'nt':  # Windows
+        command = (
+            "powershell -NoLogo -NoProfile -Command "
+            f"\"if (Test-Path '{log_path}') "
+            "{ Get-Content -Path '{log_path}' -Wait -Tail 5 } "
+            "else "
+            "{ Write-Output 'Waiting for {log_path}...'; "
+            "while (-not (Test-Path '{log_path}')) "
+            "{ Start-Sleep -Seconds 1 }; "
+            "Get-Content -Path '{log_path}' -Wait -Tail 5 }\""
+        )
+        LOGGER.info("开启 JMeter 实时日志窗口")
+        subprocess.Popen(
+            f'start "JMeter Live" {command}',
+            shell=True,
+        )
+    else:  # Linux/macOS
+        LOGGER.info("在终端中显示 JMeter 日志 (按 Ctrl+C 继续)")
+        LOGGER.info(f"日志文件: {log_path}")
+
+
+def close_live_tail() -> None:
+    """关闭实时日志窗口。"""
+    if os.name == 'nt':  # Windows
+        LOGGER.info("尝试关闭 JMeter 实时日志窗口")
+        run_command('taskkill /FI "WINDOWTITLE eq JMeter Live"', shell=True)
+    # On Linux, we don't need to do anything as we're not opening a separate window
+
+
+def remove_previous_log(log_path: Path) -> None:
+    """删除旧的 JMeter 最新日志文件。"""
+
+    if log_path.exists():
+        LOGGER.info("删除已有 JMeter 最新日志文件: %s", log_path)
+        log_path.unlink()
+
+
+def ensure_result_dir() -> Path:
+    """确保 result 目录存在。"""
+
+    result_dir = PROJECT_ROOT / "result"
+    result_dir.mkdir(exist_ok=True)
+    return result_dir
+
+
+def open_result_folder(path: Path) -> None:
+    """尝试打开结果目录。"""
+
+    LOGGER.info("尝试打开结果目录: %s", path)
+    exit_code = run_command(
+        ["python", "-m", "jmeter_test_suite", "open-result", str(path)]
+    )
+    if exit_code != 0:
+        LOGGER.info("Python 打开失败，回退到 explorer")
+        if shutil.which("explorer"):
+            run_command(["explorer", str(path)])
+        else:
+            LOGGER.warning("未找到 explorer，跳过自动打开")
+
+
+def load_jmeter_config() -> dict[str, object]:
+    """加载 JMeter YAML 配置。"""
+
+    global _JMX_CONFIG_CACHE  # noqa: PLW0603
+    if _JMX_CONFIG_CACHE is not None:
+        return _JMX_CONFIG_CACHE
+
+    if not JMX_CONFIG_PATH.exists():
+        LOGGER.warning("未找到配置文件: %s", JMX_CONFIG_PATH)
+        _JMX_CONFIG_CACHE = {}
+        return _JMX_CONFIG_CACHE
+
+    try:
+        with JMX_CONFIG_PATH.open(encoding="utf-8") as fp:
+            data = yaml.safe_load(fp) or {}
+        if not isinstance(data, dict):
+            LOGGER.warning("配置文件格式异常，使用空配置")
+            _JMX_CONFIG_CACHE = {}
+            return _JMX_CONFIG_CACHE
+        _JMX_CONFIG_CACHE = data
+        return data
+    except Exception as exc:
+        LOGGER.warning("读取配置文件失败: %s", exc)
+        _JMX_CONFIG_CACHE = {}
+        return _JMX_CONFIG_CACHE
+
+
+def parse_range_values(range_text: str) -> list[int]:
+    """解析范围字符串，返回整数列表。"""
+
+    try:
+        parts = range_text.split()
+        if len(parts) != 3:
+            raise ValueError("range text must contain three integers")
+        start, end, step = map(int, parts)
+        if step == 0:
+            return [start]
+        if start > end and step > 0:
+            return []
+        return list(range(start, end + 1, step))
+    except Exception as exc:
+        LOGGER.warning("解析范围失败 %s: %s", range_text, exc)
+        return []
+
+
+def log_config_overview(config: dict[str, object]) -> None:
+    """输出配置概览信息。"""
+
+    thread_range = str(config.get("thread_range", "100 100 0"))
+    loop_range = str(config.get("loop_range", "1 1 0"))
+
+    thread_values = parse_range_values(thread_range) or [100]
+    loop_values = parse_range_values(loop_range) or [1]
+
+    LOGGER.info("📊 线程范围: %s", thread_range)
+    LOGGER.info("📊 循环范围: %s", loop_range)
+    LOGGER.info(
+        "📊 预计测试轮数: %s × %s = %s轮",
+        len(thread_values),
+        len(loop_values),
+        len(thread_values) * len(loop_values),
+    )
+    LOGGER.info("⏱️ 预计耗时: %s-%s分钟", len(thread_values), len(loop_values) * 2)
+
+
+def log_mode_overview(config: dict[str, object]) -> None:
+    """输出模式信息。"""
+
+    distributed_cfg = config.get("distributed", {})
+    if not isinstance(distributed_cfg, dict):
+        distributed_cfg = {}
+    enabled = bool(distributed_cfg.get("enabled", False))
+    mode_text = "✅ 分布式压测" if enabled else "✅ 单机压测"
+    LOGGER.info("📊 测试模式: %s", mode_text)
+
+    if enabled:
+        slaves = distributed_cfg.get("slaves", [])
+        if isinstance(slaves, list):
+            LOGGER.info("📊 Slave数量: %s", len(slaves))
+            for slave in slaves:
+                if not isinstance(slave, dict):
+                    continue
+                name = slave.get("name", "unknown")
+                host = slave.get("host", "unknown")
+                port = slave.get("port", "unknown")
+                LOGGER.info("   - %s: %s:%s", name, host, port)
+
+
+def resolve_all_arguments() -> list[str]:
+    """根据配置解析 all 命令默认参数。"""
+
+    try:
+        config = load_jmeter_config()
+        if not config:
+            return []
+
+        test_plans = config.get("test_plans") or []
+        if not isinstance(test_plans, list) or not test_plans:
+            LOGGER.warning("配置中缺少 test_plans，all 命令将无法直接运行")
+            return []
+
+        test_plans_dir = config.get(
+            "test_plans_dir",
+            "./src/jmeter_test_suite/infrastructure/config/test_plans",
+        )
+        dir_path = Path(str(test_plans_dir))
+        if not dir_path.is_absolute():
+            dir_path = (PROJECT_ROOT / dir_path).resolve()
+        jmx_path = dir_path / test_plans[0]
+        LOGGER.info("使用默认 JMX 文件: %s", jmx_path)
+        return [str(jmx_path)]
+    except Exception as exc:
+        LOGGER.warning("解析默认 JMX 失败: %s", exc)
+        return []
+
+
+def get_python_cmd() -> str:
+    """获取可用的 Python 命令。"""
+    for cmd in ["python3", "python"]:
+        try:
+            if subprocess.run([cmd, "--version"], capture_output=True).returncode == 0:
+                return cmd
+        except (FileNotFoundError, subprocess.SubprocessError):
+            continue
+    return "python"  # 默认回退到 python
+
+def main() -> int:
+    """执行批处理原有步骤。"""
+
+    ensure_utf8_streams()
+    log_file = setup_logging()
+    LOGGER.info("====================================")
+    LOGGER.info("  JMeter Test Suite v3.0 START")
+    LOGGER.info("====================================")
+
+    update_pythonpath()
+    python_cmd = get_python_cmd()
+
+    LOGGER.info("")
+    LOGGER.info("步骤 1: 检查 Python 环境")
+    if run_command([python_cmd, "--version"]) != 0:
+        LOGGER.error("未找到 Python，请先安装 Python 3.12+")
+        return 1
+
+    LOGGER.info("")
+    LOGGER.info("步骤 2: 强制安装依赖")
+    if run_command([python_cmd, "-m", "pip", "install", "--upgrade", "pip"]) != 0:
+        LOGGER.error("pip 升级失败")
+        return 1
+
+    install_exit = run_command([python_cmd, "-m", "pip", "install", "-e", "."])
+    if install_exit != 0:
+        LOGGER.warning("默认源安装失败，尝试使用清华镜像")
+        install_exit = run_command(
+            [
+                python_cmd,
+                "-m",
+                "pip",
+                "install",
+                "-i",
+                "https://pypi.tuna.tsinghua.edu.cn/simple",
+                "-e",
+                ".[dev]",
+            ]
+        )
+        if install_exit != 0:
+            LOGGER.error("依赖安装失败")
+            LOGGER.error("日志文件: %s", log_file)
+            return install_exit
+
+    LOGGER.info("依赖安装完成")
+
+    LOGGER.info("")
+    LOGGER.info("步骤 3: 打印配置信息")
+    config_data = load_jmeter_config()
+    if not config_data:
+        LOGGER.error("配置加载失败，停止执行")
+        LOGGER.error("日志文件: %s", log_file)
+        return 1
+    log_config_overview(config_data)
+    log_mode_overview(config_data)
+
+    LOGGER.info("")
+    LOGGER.info("步骤 4: 执行性能测试")
+    result_dir = ensure_result_dir()
+    latest_log = result_dir / "jmeter_latest.log"
+    remove_previous_log(latest_log)
+    start_live_tail(latest_log)
+
+    all_args = resolve_all_arguments()
+    if not all_args:
+        LOGGER.error("缺少 all 命令执行参数，请检查配置文件")
+        LOGGER.error("日志文件: %s", log_file)
+        close_live_tail()
+        return 1
+
+    test_exit = run_command(
+        ["python", "-m", "jmeter_test_suite", "all", *all_args]
+    )
+    close_live_tail()
+
+    if test_exit != 0:
+        LOGGER.warning("性能测试失败，尝试从 JTL 生成报告")
+        report_exit = run_command(["python", "-m", "jmeter_test_suite", "report"])
+        if report_exit != 0:
+            LOGGER.error("生成报告失败，流程终止")
+            LOGGER.error("日志文件: %s", log_file)
+            return test_exit
+        LOGGER.info("报告生成成功，视为整体成功")
+
+    LOGGER.info("")
+    LOGGER.info("步骤 5: 打开结果目录")
+    open_result_folder(result_dir)
+
+    LOGGER.info("")
+    LOGGER.info("====================================")
+    LOGGER.info("  JMeter Test Suite v3.0 COMPLETE")
+    LOGGER.info("====================================")
+    LOGGER.info("日志文件: %s", log_file)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+

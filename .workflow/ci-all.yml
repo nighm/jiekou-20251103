@@ -1,0 +1,52 @@
+version: '1.0'
+name: ci-all
+displayName: CIQualityGate
+triggers:
+  trigger: auto
+  push:
+    branches:
+      include:
+        - .*
+  pr:
+    branches:
+      include:
+        - .*
+stages:
+  - name: quality
+    displayName: 质量校验
+    strategy: naturally
+    trigger: auto
+    steps:
+      - step: build@python
+        name: build_python
+        displayName: Python 构建
+        pythonVersion: '3.9'
+        commands:
+          - pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          - '# 可以使用pip下载依赖'
+          - '# pip install --user -r requirements.txt'
+          - python --version
+        artifacts:
+          - name: BUILD_ARTIFACT
+            path:
+              - ./
+        caches: []
+        notify: []
+        strategy:
+          retry: '0'
+      - step: execute@docker
+        name: execute_by_docker
+        displayName: 基于镜像的脚本执行
+        certificate: ''
+        image: nanozoo/python3.12:3.12--d46ab4d
+        command:
+          - '# 请在此输入您想执行的脚本'
+          - echo 'Hello Gitee!'
+        artifacts:
+          - name: BUILD_ARTIFACT
+            path:
+              - ./target
+        notify: []
+        strategy:
+          retry: '0'
+          resource: '{"limits":{"cpu":"8","memory":"16"}}'
